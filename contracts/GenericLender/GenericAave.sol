@@ -10,6 +10,8 @@ import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "./GenericLenderBase.sol";
 import "../Interfaces/Aave/IAToken.sol";
 import "../Interfaces/Aave/ILendingPool.sol";
+import "../Interfaces/Aave/IProtocolDataProvider.sol";
+import "../Interfaces/Aave/IReserveInterestRateStrategy.sol";
 import "../Libraries/Aave/DataTypes.sol";
 
 /********************
@@ -23,24 +25,24 @@ contract GenericAave is GenericLenderBase {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
-
+    
     uint256 private constant blocksPerYear = 2_300_000;
 
-    ILendingPool public lendingPool;
-    IAToken public aToken;
+    IProtocolDataProvider public immutable protocolDataProvider;
+    IAToken public immutable aToken;
 
     constructor(
         address _strategy,
         string memory name,
-        ILendingPool _lendingPool,
+        IProtocolDataProvider _protocolDataProvider,
         IAToken _aToken
     ) public GenericLenderBase(_strategy, name) {
-        lendingPool = _lendingPool;
+        protocolDataProvider = _protocolDataProvider;
         aToken = _aToken;
 
-        require(_lendingPool.getReserveData(address(want)).aTokenAddress == address(_aToken), "WRONG ATOKEN");
+        require(ILendingPool(_protocolDataProvider.ADDRESSES_PROVIDER().getLendingPool()).getReserveData(address(want)).aTokenAddress == address(_aToken), "WRONG ATOKEN");
 
-        want.approve(address(_lendingPool), type(uint256).max);
+        want.approve(address(_protocolDataProvider.ADDRESSES_PROVIDER().getLendingPool()), type(uint256).max);
     }
 
     function nav() external view override returns (uint256) {
@@ -60,7 +62,7 @@ contract GenericAave is GenericLenderBase {
     }
 
     function _apr() internal view returns (uint256) {
-        return lendingPool.getReserveData(address(want)).currentLiquidityRate;
+        return uint(_lendingPool().getReserveData(address(want)).currentLiquidityRate).div(1e9); // dividing by 1e9 to pass from ray to wad
     }
 
     function weightedApr() external view override returns (uint256) {
@@ -74,7 +76,7 @@ contract GenericAave is GenericLenderBase {
 
     //emergency withdraw. sends balance plus amount to governance
     function emergencyWithdraw(uint256 amount) external override management {
-        lendingPool.withdraw(address(want), amount, address(this));
+        _lendingPool().withdraw(address(want), amount, address(this));
 
         want.safeTransfer(vault.governance(), want.balanceOf(address(this)));
     }
@@ -103,10 +105,10 @@ contract GenericAave is GenericLenderBase {
 
             if (toWithdraw <= liquidity) {
                 //we can take all
-                lendingPool.withdraw(address(want), toWithdraw, address(this));
+                _lendingPool().withdraw(address(want), toWithdraw, address(this));
             } else {
                 //take all we can
-                lendingPool.withdraw(address(want), liquidity, address(this));
+                _lendingPool().withdraw(address(want), liquidity, address(this));
             }
         }
         looseBalance = want.balanceOf(address(this));
@@ -116,7 +118,7 @@ contract GenericAave is GenericLenderBase {
 
     function deposit() external override management {
         uint256 balance = want.balanceOf(address(this));
-        lendingPool.deposit(address(want), balance, address(this), 0);
+        _lendingPool().deposit(address(want), balance, address(this), 7);
     }
 
     function withdrawAll() external override management returns (bool) {
@@ -134,19 +136,40 @@ contract GenericAave is GenericLenderBase {
         return aToken.balanceOf(address(this)) > 0;
     }
 
-    function aprAfterDeposit(uint256 amount) external view override returns (uint256) {
-        // uint256 cashPrior = want.balanceOf(address(cToken));
+    function _lendingPool() internal view returns (ILendingPool lendingPool) {
+        lendingPool = ILendingPool(protocolDataProvider.ADDRESSES_PROVIDER().getLendingPool());
+    }
 
-        // uint256 borrows = aToken.totalBorrows();
-        // uint256 reserves = aToken.totalReserves();
+    function aprAfterDeposit(uint256 extraAmount) external view override returns (uint256) {
+        // i need to calculate new supplyRate after Deposit (when deposit has not been done yet)
+        DataTypes.ReserveData memory reserveData = _lendingPool().getReserveData(address(want));
 
-        // uint256 reserverFactor = cToken.reserveFactorMantissa();
-        // InterestRateModel model = cToken.interestRateModel();
+        (
+            uint availableLiquidity,
+            uint totalStableDebt,
+            uint totalVariableDebt,
+            ,
+            ,
+            ,
+            uint averageStableBorrowRate,
+            ,
+            ,
+            ) = protocolDataProvider.getReserveData(address(want));
 
-        // //the supply rate is derived from the borrow rate, reserve factor and the amount of total borrows.
-        // uint256 supplyRate = model.getSupplyRate(cashPrior.add(amount), borrows, reserves, reserverFactor);
+        uint newLiquidity = availableLiquidity.add(extraAmount);
 
-        // return supplyRate.mul(blocksPerYear);
+        (, , , , uint reserveFactor, , , , , ) = protocolDataProvider.getReserveConfigurationData(address(want));
+
+        (uint newLiquidityRate, , ) = IReserveInterestRateStrategy(reserveData.interestRateStrategyAddress).calculateInterestRates(
+            address(want),
+            newLiquidity,
+            totalStableDebt,
+            totalVariableDebt,
+            averageStableBorrowRate,
+            reserveFactor
+        );
+
+        return newLiquidityRate.div(1e9); // divided by 1e9 to go from Ray to Wad
     }
 
     function protectedTokens() internal view override returns (address[] memory) {
