@@ -67,7 +67,7 @@ def test_apr_weth(
 
         profit = (vault.totalAssets() - startingBalance) / 1e6
         strState = vault.strategies(strategy)
-        totalReturns = strState[6]
+        totalReturns = strState[7]
         totaleth = totalReturns / 1e6
         # print(f'Real Profit: {profit:.5f}')
         difff = profit - totaleth
@@ -131,8 +131,10 @@ def test_tend_trigger_weth(
     strategy.setWithdrawalThreshold(0, {"from": gov})
     assert strategy.numLenders() == 3
 
-    deposit_limit = 10_000
-    vault.addStrategy(strategy, deposit_limit, 0, 2 ** 256 - 1, 1000, {"from": gov})
+    deposit_limit = 100_000_000 * 1e18
+    debt_ratio = 10_000
+    vault.addStrategy(strategy, debt_ratio, 0, 2 ** 256 - 1, 500, {"from": gov})
+    vault.setDepositLimit(deposit_limit, {'from': gov})
 
     whale_deposit = 10000 * 1e18
     vault.deposit(whale_deposit, {"from": whale})

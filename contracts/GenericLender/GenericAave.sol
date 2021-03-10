@@ -127,11 +127,6 @@ contract GenericAave is GenericLenderBase {
         return returned >= invested;
     }
 
-    //think about this
-    function enabled() external view override returns (bool) {
-        return true;
-    }
-
     function hasAssets() external view override returns (bool) {
         return aToken.balanceOf(address(this)) > 0;
     }

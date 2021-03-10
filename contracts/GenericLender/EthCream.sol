@@ -121,7 +121,7 @@ contract EthCream is GenericLenderBase {
 
     function deposit() external override management {
         uint256 balance = want.balanceOf(address(this));
-
+        
         weth.withdraw(balance);
         require(crETH.mint{value: balance}() == 0, "ctoken: mint fail");
     }

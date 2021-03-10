@@ -135,12 +135,15 @@ def vault(gov, rewards, guardian, currency, pm):
     Vault = pm(config["dependencies"][0]).Vault
     vault = Vault.deploy({"from": guardian})
     vault.initialize(currency, gov, rewards, "", "")
+    vault.setManagementFee(0, {'from': gov})
     yield vault
 
 
 @pytest.fixture
 def strategy(
     strategist,
+    gov,
+    rewards,
     keeper,
     vault,
     crUsdc,
@@ -151,15 +154,16 @@ def strategy(
     GenericDyDx,
 ):
     strategy = strategist.deploy(Strategy, vault)
-    strategy.setKeeper(keeper)
-
+    strategy.setKeeper(keeper, {'from': gov})
+    strategy.setWithdrawalThreshold(0, {'from': gov})
+    strategy.setRewards(rewards, {'from': strategist})
     compoundPlugin = strategist.deploy(GenericCompound, strategy, "Compound", cUsdc)
     creamPlugin = strategist.deploy(GenericCream, strategy, "Cream", crUsdc)
     dydxPlugin = strategist.deploy(GenericDyDx, strategy, "DyDx")
-    strategy.addLender(compoundPlugin, {"from": strategist})
+    strategy.addLender(creamPlugin, {"from": gov})
     assert strategy.numLenders() == 1
-    strategy.addLender(creamPlugin, {"from": strategist})
+    strategy.addLender(compoundPlugin, {"from": gov})
     assert strategy.numLenders() == 2
-    strategy.addLender(dydxPlugin, {"from": strategist})
+    strategy.addLender(dydxPlugin, {"from": gov})
     assert strategy.numLenders() == 3
     yield strategy

@@ -58,8 +58,8 @@ def test_live(
     devychad,
     live_guest_list,
     live_Alpha_Homo,
-    live_vault_weth,
-    live_strat_weth_1,
+    live_vault_weth_032,
+    live_strat_weth_032,
     chain,
     whale,
     gov,
@@ -69,8 +69,8 @@ def test_live(
     gov = devychad
     decimals = currency.decimals()
     strategist = samdev
-    strategy = live_strat_weth_1
-    vault = live_vault_weth
+    strategy = live_strat_weth_032
+    vault = live_vault_weth_032
 
     addresses = [whale]
     permissions = [True]
@@ -106,8 +106,8 @@ def test_live2(
     Contract,
     ychad,
     live_Alpha_Homo_2,
-    live_vault_weth_2,
-    live_strat_weth_2,
+    live_vault_weth_032,
+    live_strat_weth_032,
     chain,
     whale,
     gov,
@@ -117,8 +117,8 @@ def test_live2(
     gov = ychad
     decimals = currency.decimals()
     strategist = samdev
-    strategy = live_strat_weth_2
-    vault = live_vault_weth_2
+    strategy = live_strat_weth_032
+    vault = live_vault_weth_032
 
     addresses = [whale]
     permissions = [True]
